@@ -2,78 +2,111 @@
 
 Procedural character-sheet generator for [Sei](https://sei.gg), a Minecraft AI-companion app.
 
-soulcaster turns a gender and an optional user profile into a fully specified character sheet: name, background, species detail, personality, an elaborate backstory, a head-to-toe appearance, and a self-contained image prompt. The output is specific enough that the character has a clear story and that an image model reproduces the same character consistently across runs.
+soulcaster is a deterministic, two-stage character generator. Stage 1 rolls every piece of variety from seeded weighted tables, no LLM involved. Stage 2 hands the rolled fields to an injected LLM, which consolidates them into a single, richly detailed, schema-validated character sheet. The package never holds API keys; the caller supplies its own `llm` function.
 
-## Two-stage design
+## Pipeline
 
-Generation is split into two stages on purpose.
-
-**Stage 1: a non-LLM randomizer (`rollFields`).** A pure function that rolls concrete traits from weighted option tables: background, hair color and style, eye color, height, build, bust (female only), age, two contrasting personality seeds, a quirk, an outfit accent color, and a combat stat block. All randomness lives here.
-
-The reason to keep randomness out of the model is bias. When an LLM is asked to invent a character from scratch it collapses toward clichés, the same few "cool" hair colors and the same handful of tropes, run after run. Rolling the traits first and handing them to the model as fixed constraints forces real variety: 22 hair colors, 24 personality words picked two at a time, four backgrounds by weight, and so on.
-
-**Stage 2: LLM consolidation (`castSoul`).** The rolled fields plus any user preferences are handed to an injected `llm` function, which weaves them into a coherent sheet. The model may consolidate or drop fields that do not apply (a robot with no hair drops the hair field so the image model is not confused), and must add clothing, accessories, species detail, distinguishing features, and a 150 to 300 word backstory that explains how the appearance and personality cohere. Output is strict JSON, validated with zod; on a parse or schema failure it retries once with the validation error appended, then throws a typed error.
-
-The package never touches API keys in library use. The caller injects an `llm` function wired to its own backend.
-
-## Install
-
-Requires Node.js 18+.
-
-```sh
-npm install
+```
+gender, userProfile, rng
+        |
+        v
+  rollFields()  ---- tables.js (weighted picks, seeded rng)
+        |
+        v
+  rolled fields  (background, appearance, heritage, life_context,
+                  personality seeds, combat stats, ...)
+        |
+        v
+  buildSystemPrompt() + buildUserPrompt()   (prompt.js)
+        |
+        v
+       LLM   (caller-injected async function)
+        |
+        v
+  parse + CharacterSheetSchema.safeParse()   (zod)
+        |          \
+        |           \-- invalid --> retry once with the error appended
+        v
+  authoritative overwrites
+  (combat, heritage re-stamped from the rolled values)
+        |
+        v
+  { sheet, rolled }
 ```
 
-## Library usage
+Everything above the LLM box is pure and synchronous. Everything below the LLM box is validation and drift-proofing, not invention.
 
-```js
-import { castSoul, rollFields, CharacterSheetSchema } from 'soulcaster';
+## Components
 
-// Stage 1 only: just the rolled traits (pure, synchronous).
-const rolled = rollFields({ gender: 'female', userProfile: { companion_age_range: 'adult' } });
+### Age ranges
 
-// Full sheet: inject your own LLM. Signature:
-//   async ({ system, user, maxTokens }) => string   (the model's raw text)
-const llm = async ({ system, user, maxTokens }) => {
-  // call your backend here, return the raw string response
-};
+`rollFields` takes an optional `userProfile.companion_age_range`: `young-adult` (18-25), `adult` (26-35), `mature` (36-50), `elder` (51-75), or `timeless` (rolls an apparent age of 18-35 but flags the character as an ancient being; the LLM writes the real age into `age_note`). With no profile, age falls back to a default 18-60 range. 18 is a hard floor everywhere.
 
-const { sheet, rolled: rolledUsed } = await castSoul({
-  gender: 'female',
-  userProfile: { companion_age_range: 'adult', art_style: 'soft anime' },
-  llm,
-});
+### Species / backgrounds
 
-// `sheet` is validated against CharacterSheetSchema.
-```
+Weighted pick over `BACKGROUNDS`: human (50%), elf, beastkin, robot. Human is the common case so most characters are ordinary people; the other three are rarer and each carry their own `species_detail` convention (animal type and features for beastkin, subtype and ear shape for elves, chassis type and material for robots).
 
-`castSoul` accepts an optional `rng` (default `Math.random`) so rolls can be made deterministic.
+### Appearance tables
 
-### User profile
+Hair color (22 options, natural spectrum plus fantasy colors), hair style, eye color (14 options plus a rare heterochromia roll), height, build, and bust (rolled only for female characters). These are independent uniform picks; keeping them out of the LLM avoids the model collapsing toward the same "cool" hair colors and tropes every run.
 
-The optional `userProfile` object is treated loosely. Known keys:
+### Personality and quirk seeds
 
-- `companion_age_range`: `young-adult` (18-25), `adult` (26-35), `mature` (36-50), `elder` (51-75), or `timeless` (rolls an apparent age of 18-35 and flags the character as an ancient being, so the model writes the real age into `age_note`).
-- `art_style`: passed to the model as context only. It is never written into `image_prompt` — the caller appends style words themselves.
+Two distinct temperament words are picked from a 24-word list (`PERSONALITY_SEEDS`) and handed to the LLM as "blend these two," which forces contrast (e.g. "scheming yet devoted") instead of one flat trait. A single quirk seed (`QUIRK_SEEDS`, 16 options) gives the model a concrete habit to build from.
 
-Any other keys are passed through to the model as extra context.
+### Heritage
+
+`HERITAGES` is a weighted table of 12 naming cultures: japanese, korean, chinese, south-asian, nordic, slavic, latin-american, middle-eastern, west-african, anglo, romance (French/Italian/Spanish-European), and fantasy-invented. No single heritage is weighted above ~20%, and fantasy-invented stays a modest ~9-10% so it is not the default escape hatch.
+
+Heritage drives the naming culture of the `name` field, and for humans it also informs general feature framing. For non-humans (elf, beastkin, robot) it flavors the naming culture only: a japanese-heritage elf gets a Japanese-style name, never a claim of real-world ethnicity. A robot's "name" is really a designation; heritage flavors the designation's naming convention the same way.
+
+### Life context
+
+Rather than let the LLM invent an occupation from scratch (uncontrolled distribution) or hand it a giant enumerated job list (rigid), `rollFields` rolls a coarse **category** and the LLM specializes it into one concrete occupation consistent with age, heritage, and personality. This keeps distribution control on the table side (10 weights) while the actual jobs stay unbounded.
+
+The category roll is weighted by an age x category matrix (`LIFE_CONTEXT_WEIGHTS` in `src/tables.js`), banded at 18-22 / 23-29 / 30-45 / 46+:
+
+| category | 18-22 | 23-29 | 30-45 | 46+ |
+|---|---|---|---|---|
+| student | 40 | 8 | 1 | 0.5 |
+| service-retail | 18 | 16 | 10 | 6 |
+| creative-performer | 16 | 16 | 10 | 6 |
+| care-medical | 4 | 10 | 12 | 10 |
+| technical-craft | 8 | 14 | 16 | 14 |
+| academic-professional | 1 | 8 | 16 | 18 |
+| rural-outdoor | 6 | 8 | 12 | 18 |
+| spiritual-traditional | 3 | 5 | 8 | 14 |
+| in-between | 10 | 10 | 8 | 8 |
+| wildcard | 4 | 5 | 5 | 5 |
+
+The band is chosen from the character's own rolled age (the apparent age, for `timeless` characters, so an ancient being still lands in a young-looking band; the prompt separately invites it to reinterpret the category across a long life). Run `node scripts/identityStudy.js` to see the resulting distribution per profile, the heritage spread, and sample rolls.
+
+Each category carries a short `hint` string of example specializations (e.g. student: "university student, vocational school, final-year exam prepper") fed to the LLM as inspiration, not an exhaustive menu. The LLM's output lands in the `occupation` field. Unlike combat, heritage and occupation are meant to shape the backstory: they are identity, not just gameplay.
 
 ### Combat
 
-`rollFields` also rolls a `combat` block: four scores in `[0,1]`, quantized to 0.05 steps, plus an `archetype` label. These numbers are pure Stage-1 output — the LLM in Stage 2 is asked to echo them verbatim (and to write a backstory/personality that fits them), but `castSoul` re-stamps `sheet.combat = rolled.combat` after validation regardless, so LLM drift can never change the numbers that ship.
+`rollFields` also rolls a `combat` block: four stats in `[0,1]`, quantized to 0.05 steps, plus an archetype label.
 
-The four stats and what they mean to the Minecraft bot adapter that consumes them (soulcaster only produces the numbers):
+- **melee** - sword/axe skill. Hit chance = `50% + melee*50%`.
+- **ranged** - bow/crossbow accuracy = `ranged*100%`; also proxies draw strength (weaker archers release early).
+- **defense** - reaction speed, dodge chance, and the discipline to disengage and heal.
+- **intelligence** - battle IQ: crit timing, weapon-switch discipline, retreat-to-heal quality.
 
-- **`melee`** — sword/axe skill. Hit chance = `50% + melee*50%` (melee is forgiving to land: 0 -> 50% hit chance, 1 -> 100%).
-- **`ranged`** — bow/crossbow skill. Accuracy = `ranged*100%`. Also proxies draw strength: how fully the character draws the bow before releasing (draw fraction ~= `0.5 + ranged*0.5`), so a weak archer releases early with less damage and arrow velocity.
-- **`defense`** — reaction speed, dodge chance, and the discipline to proactively open distance to heal or draw a bow. Dodge chance ~= `defense`; reaction delay lerps from ~600ms (low defense) to ~100ms (high defense); disengage-to-heal propensity scales with it too.
-- **`intelligence`** — battle IQ / combo play. Melee crit attempts (jumping and striking mid-fall) chance ~= `intelligence*0.5` per engagement. Also governs weapon-switch discipline (swapping melee/bow at the correct range), the quality of retreat-to-heal timing, and strafe unpredictability.
+Independent uniform rolls per stat would cluster every character mid-pack, so the roller first picks a weighted archetype (`brawler`, `sharpshooter`, `duelist`, `tactician`, `skirmisher`, `juggernaut`, `balanced`, `noncombatant`), each defining a `[min,max]` band per stat, then applies a small per-species bump (elf leans ranged/defense, beastkin leans melee/defense, robot leans ranged/intelligence, human gets a slight intelligence edge). Run `node scripts/combatStudy.js` for the resulting histograms and archetype frequency.
 
-Independent uniform rolls per stat would make every character mid-pack, so the roller picks a weighted **archetype** first (`brawler`, `sharpshooter`, `duelist`, `tactician`, `skirmisher`, `juggernaut`, `balanced`, `noncombatant` — see `COMBAT_ARCHETYPES` in `src/tables.js`), each defining a `[min,max]` band per stat, then applies a small per-species bump (`COMBAT_SPECIES_MODIFIERS`: elf leans ranged/defense, beastkin leans melee/defense, robot leans ranged/intelligence, human gets a slight intelligence edge) before quantizing. Run `node scripts/combatStudy.js` to see the resulting distribution (per-stat histograms, archetype frequency, per-species means, sample characters).
+**Combat is in-game playstyle only.** It is never derived from or woven into personality or backstory: a shy student can be a lobby-topping sharpshooter. This is the opposite rule from heritage and occupation above, which the backstory should draw on.
 
-## CLI
+### LLM consolidation contract
 
-For testing and manual generation.
+`castSoul` builds a system prompt and a user prompt (rolled fields plus any user preferences) and calls the injected `llm` function. The model must echo the rolled, closed-vocabulary fields verbatim (background, combat, heritage) and invent the rest (name, species_detail, occupation, personality, backstory, appearance, image_prompt) as strict JSON, validated against `CharacterSheetSchema` (zod). On a parse or schema failure, it retries once with the validation error appended, then throws a typed `SoulcasterError`.
+
+After validation, `castSoul` re-stamps `sheet.combat` and `sheet.heritage` from the rolled values regardless of what the model echoed. Both are closed vocabularies rolled deterministically in Stage 1, so a paraphrase or dropped digit on retry can never desync the sheet from what was actually rolled. `occupation` is not rolled and is never overwritten; it is pure LLM invention, only validated.
+
+### Determinism / seeding
+
+Every roll takes an `rng` (default `Math.random`). Passing `mulberry32(seed)` (exported) makes every roll, including `castSoul`'s Stage 1 fields, fully reproducible from an integer seed. This is what the CLI's `--seed` flag and the whole test suite rely on.
+
+### CLI
 
 ```sh
 # Skip the LLM: print the rolled fields plus a stub sheet.
@@ -82,7 +115,7 @@ node src/cli.js --gender female --mock
 # Deterministic rolls with a seed.
 node src/cli.js --gender female --seed 42 --mock
 
-# With a profile file.
+# With a profile file ({ companion_age_range?, art_style?, ... }).
 node src/cli.js --gender other --profile profile.json --mock
 
 # Real generation (needs ANTHROPIC_API_KEY; model claude-haiku-4-5).
@@ -90,7 +123,35 @@ export ANTHROPIC_API_KEY=sk-ant-...
 node src/cli.js --gender female --seed 42
 ```
 
-The Anthropic fetch lives only in the CLI. It is a convenience for testing and is never part of the library path.
+The Anthropic fetch lives only in the CLI. It is a convenience for testing and manual generation, never part of the library path.
+
+### Testing
+
+```sh
+npm test
+```
+
+`tests/` is a `node:test` suite: roll determinism and coverage (`rollFields.test.js`), the combat roller's bands and species modifiers (`combat.test.js`), heritage and life-context banding, coverage, and sanity targets (`identity.test.js`), and the `castSoul` happy path, retry, and failure behavior against a mock `llm` (`castSoul.test.js`). No API key is needed.
+
+`scripts/combatStudy.js` and `scripts/identityStudy.js` are standalone distribution studies (no test dependencies) used to tune the weight tables by eye.
+
+## Library usage
+
+```js
+import { castSoul, rollFields } from 'soulcaster';
+
+// Stage 1 only: just the rolled traits (pure, synchronous).
+const rolled = rollFields({ gender: 'female', userProfile: { companion_age_range: 'adult' } });
+
+// Full sheet: inject your own LLM, signature async ({ system, user, maxTokens }) => string.
+const llm = async ({ system, user, maxTokens }) => { /* call your backend, return raw text */ };
+
+const { sheet, rolled: rolledUsed } = await castSoul({
+  gender: 'female',
+  userProfile: { companion_age_range: 'adult', art_style: 'soft anime' },
+  llm,
+});
+```
 
 ## Output schema
 
@@ -98,34 +159,25 @@ The Anthropic fetch lives only in the CLI. It is a convenience for testing and i
 
 ```
 {
-  name,                       // first name, optionally with an epithet
-  gender,                     // male | female | other
-  age, age_note,              // number; note like "appears 24, is 312" or null
-  background,                 // human | elf | robot | beastkin
-  species_detail,             // e.g. "wood elf with tapered ears"
-  personality: {
-    tone,                     // one line
-    values,                   // 3 to 5 items
-    quirks,                   // 2 to 3 items
-    fears                     // 1 to 2 items
-  },
-  backstory,                  // 150 to 300 words
-  voice_style,                // how they talk, 1 to 2 sentences
-  combat: {                   // rolled in Stage 1, re-stamped after validation
-    archetype,                // e.g. "brawler", "sharpshooter", "tactician"
-    melee, ranged,            // 0 to 1, quantized to 0.05 steps
-    defense, intelligence     // 0 to 1, quantized to 0.05 steps
+  name,                    // follows heritage's naming culture
+  gender, age, age_note,   // age_note e.g. "appears 24, is 312", or null
+  background,              // human | elf | robot | beastkin
+  species_detail,          // e.g. "wood elf with tapered ears"
+  heritage,                // rolled naming culture, re-stamped after validation
+  occupation,              // LLM's concrete specialization of the rolled life_context
+  personality: { tone, values /* 3-5 */, quirks /* 2-3 */, fears /* 1-2 */ },
+  backstory,               // 150 to 300 words, weaves in heritage and occupation
+  voice_style,
+  combat: {                // rolled in Stage 1, re-stamped after validation
+    archetype,
+    melee, ranged, defense, intelligence   // 0 to 1, quantized to 0.05 steps
   },
   appearance: {
-    overall,
-    hair,                     // null when the character has none (robots)
-    eyes, skin, height, build,
-    bust,                     // null unless applicable
-    outfit,                   // specific garments and colors
-    accessories,              // list
-    distinguishing_features   // 1 to 3 items
+    overall, hair /* null for robots */, eyes, skin, height, build,
+    bust,                  // null unless applicable
+    outfit, accessories, distinguishing_features  // 1-3 items
   },
-  image_prompt                // one self-contained paragraph, no art-style words
+  image_prompt             // one self-contained paragraph, no art-style words
 }
 ```
 
@@ -133,22 +185,23 @@ The Anthropic fetch lives only in the CLI. It is a convenience for testing and i
 
 ```
 src/
-  index.js   castSoul, rollFields, CharacterSheetSchema, AGE_RANGES, option tables, mulberry32
-  tables.js  all option tables
+  index.js   castSoul, rollFields, CharacterSheetSchema, option tables, mulberry32
+  tables.js  all option tables (heritage, life context, combat, appearance, ...)
   prompt.js  system and user prompt builders
   cli.js     CLI (--gender, --profile, --seed, --mock)
 scripts/
-  combatStudy.js  distribution study for the combat roller (no deps)
+  combatStudy.js    distribution study for the combat roller (no deps)
+  identityStudy.js  distribution study for heritage + life_context (no deps)
 tests/       node:test suite (npm test, no API key needed)
 ```
 
-## Tests
+## Install
+
+Requires Node.js 18+.
 
 ```sh
-npm test
+npm install
 ```
-
-The suite covers roll determinism under a seeded rng, full table coverage over many rolls, bust rolled for female only, age-range mapping, the `castSoul` happy path with a mock llm, the invalid-then-valid retry path, throwing after two failures, and code-fence stripping.
 
 ## License
 
