@@ -16,7 +16,7 @@ RULES:
   - robot: pick a type (android / heavy chassis / porcelain automaton, etc.) and describe the material and finish.
   - human: describe skin tone and any notable human features.
 - The backstory MUST be 150 to 300 words and must explain HOW the appearance and the personality cohere — why this person looks and acts this way.
-- combat below is a pre-rolled set of four fight-style numbers (melee, ranged, defense, intelligence, each 0 to 1) plus an archetype label. Echo the combat object in your JSON EXACTLY as given — same archetype string, same four numbers, no rounding or rewording. Then let the backstory and personality COHERE with it: a 0.9-melee 0.1-intelligence juggernaut fights by brute force and probably thinks fights are simple, while a 0.9-intelligence 0.1-melee tactician avoids a fair fight entirely and wins on positioning and timing. The numbers should read as consistent with who this person is, not bolted on.
+- combat below is a pre-rolled set of four numbers (melee, ranged, defense, intelligence, each 0 to 1) plus an archetype label. Echo the combat object in your JSON EXACTLY as given — same archetype string, same four numbers, no rounding or rewording. IMPORTANT: this is the character's Minecraft PLAYSTYLE, not their identity — these characters know they are playing a game, and combat skill is how they happen to play it, the way a shy student can be a lobby-topping sharpshooter. Do NOT derive the backstory or personality from the combat numbers: no combat training, warrior past, weapons lore, or fighter framing unless the OTHER rolled fields independently call for it. The backstory must stand entirely on its own with combat removed.
 - Be ULTRA-SPECIFIC everywhere. Prefer concrete nouns and exact colors over vague adjectives. The character must be reproducible: an image model reading image_prompt should draw the same character every time.
 - image_prompt is ONE self-contained paragraph, a full-body head-to-toe visual description consistent with every other field. Do NOT include any art-style words (no "anime", "realistic", "3D render", "pixel art", etc.) — the caller appends the style. Describe only the character.
 - No em-dashes in your prose.
@@ -68,7 +68,7 @@ export function buildUserPrompt({ gender, userProfile, rolled }) {
   lines.push(`quirk_seed: ${rolled.quirk_seed}`);
   lines.push(`palette_accent: ${rolled.palette_accent} (use as the outfit's accent color)`);
   lines.push(
-    `combat: ${JSON.stringify(rolled.combat)} (echo this object verbatim as the "combat" field; write the backstory and personality so they cohere with this fighting style)`,
+    `combat: ${JSON.stringify(rolled.combat)} (echo this object verbatim as the "combat" field; this is in-game playstyle only, keep it OUT of the backstory and personality)`,
   );
 
   const extras = userPreferenceLines(userProfile);
