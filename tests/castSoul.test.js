@@ -11,6 +11,8 @@ function validSheet(overrides = {}) {
     age_note: null,
     background: 'beastkin',
     species_detail: 'fox-person with tall russet ears and a full brush tail',
+    heritage: 'japanese',
+    occupation: 'night-shift convenience store clerk',
     personality: {
       tone: 'dry-witted yet devoted',
       values: ['loyalty', 'craft', 'honesty'],

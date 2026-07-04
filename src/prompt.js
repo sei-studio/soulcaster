@@ -3,6 +3,8 @@
 // preferences. Randomness already happened in Stage 1 — the model's job is
 // consolidation and enrichment, not invention of the core traits.
 
+import { LIFE_CONTEXTS } from './tables.js';
+
 export function buildSystemPrompt() {
   return `You are a character designer for Sei, a Minecraft AI-companion app. You turn a set of pre-rolled random traits into a single, richly detailed, internally consistent character sheet.
 
@@ -15,8 +17,10 @@ RULES:
   - elf: pick a subtype (wood elf / high elf / dark elf) and describe ear shape and complexion.
   - robot: pick a type (android / heavy chassis / porcelain automaton, etc.) and describe the material and finish.
   - human: describe skin tone and any notable human features.
-- The backstory MUST be 150 to 300 words and must explain HOW the appearance and the personality cohere — why this person looks and acts this way.
-- combat below is a pre-rolled set of four numbers (melee, ranged, defense, intelligence, each 0 to 1) plus an archetype label. Echo the combat object in your JSON EXACTLY as given — same archetype string, same four numbers, no rounding or rewording. IMPORTANT: this is the character's Minecraft PLAYSTYLE, not their identity — these characters know they are playing a game, and combat skill is how they happen to play it, the way a shy student can be a lobby-topping sharpshooter. Do NOT derive the backstory or personality from the combat numbers: no combat training, warrior past, weapons lore, or fighter framing unless the OTHER rolled fields independently call for it. The backstory must stand entirely on its own with combat removed.
+- heritage below is a pre-rolled naming culture. Echo the heritage string in your JSON EXACTLY as given. The name MUST follow that heritage's naming culture (a japanese heritage character gets a Japanese-style name, a nordic heritage character a Nordic-style name, and so on). This applies to non-humans too: a japanese-heritage elf still gets a Japanese-style name. But heritage flavors the NAME (and, for humans only, general feature framing) — it never claims a real-world ethnicity for an elf, beastkin, or robot. A robot's "name" is really a designation; flavor the designation's naming convention by the heritage instead (e.g. a nordic-heritage robot might carry a Nordic-sounding designation), not an ethnicity claim about the machine.
+- occupation: specialize the rolled life_context CATEGORY (below) into ONE concrete occupation, consistent with the character's age, heritage, and personality. The category's example specializations are inspiration only, not an exhaustive menu — invent freely within the spirit of the category. For non-human species (elf, beastkin, robot), reinterpret the category rather than ignore it (e.g. a beastkin in the rural-outdoor category could be an orchard keeper who talks to the animals; a robot in the technical-craft category could be a maintenance unit repurposed as an apprentice mechanic).
+- The backstory MUST be 150 to 300 words and must explain HOW the appearance and the personality cohere — why this person looks and acts this way. The backstory SHOULD weave in occupation and heritage: unlike combat (see below), these ARE part of the character's identity, not just gameplay, so let them shape formative details, daily life, or worldview.
+- combat below is a pre-rolled set of four numbers (melee, ranged, defense, intelligence, each 0 to 1) plus an archetype label. Echo the combat object in your JSON EXACTLY as given — same archetype string, same four numbers, no rounding or rewording. IMPORTANT: this is the character's Minecraft PLAYSTYLE, not their identity — these characters know they are playing a game, and combat skill is how they happen to play it, the way a shy student can be a lobby-topping sharpshooter. Do NOT derive the backstory or personality from the combat numbers: no combat training, warrior past, weapons lore, or fighter framing unless the OTHER rolled fields independently call for it. The backstory must stand entirely on its own with combat removed. This is the opposite rule from occupation and heritage above: combat stays OUT of the backstory, occupation and heritage belong IN it.
 - Be ULTRA-SPECIFIC everywhere. Prefer concrete nouns and exact colors over vague adjectives. The character must be reproducible: an image model reading image_prompt should draw the same character every time.
 - image_prompt is ONE self-contained paragraph, a full-body head-to-toe visual description consistent with every other field. Do NOT include any art-style words (no "anime", "realistic", "3D render", "pixel art", etc.) — the caller appends the style. Describe only the character.
 - No em-dashes in your prose.
@@ -30,6 +34,8 @@ Return STRICT JSON only — a single object, no prose before or after, no markdo
   "age_note": string | null,
   "background": "human" | "elf" | "robot" | "beastkin",
   "species_detail": string,
+  "heritage": string,
+  "occupation": string,
   "personality": { "tone": string, "values": string[], "quirks": string[], "fears": string[] },
   "backstory": string,
   "voice_style": string,
@@ -58,6 +64,17 @@ export function buildUserPrompt({ gender, userProfile, rolled }) {
   lines.push(`gender: ${gender}`);
   lines.push(`background: ${rolled.background}`);
   lines.push(`age: ${rolled.age}${rolled.apparent_only ? ' (this is only the APPARENT age — the character is an ancient being; write the real age into age_note)' : ''}`);
+  lines.push(
+    `heritage: ${rolled.heritage} (drives the naming culture for "name"; for non-humans this flavors the name only, never a real-world ethnicity claim)`,
+  );
+  const lifeContextHint = LIFE_CONTEXTS[rolled.life_context] ? LIFE_CONTEXTS[rolled.life_context].hint : '';
+  lines.push(
+    `life_context: ${rolled.life_context} (category — examples for inspiration only: ${lifeContextHint}; invent ONE concrete "occupation" within this category, consistent with age/heritage/personality` +
+      (rolled.apparent_only
+        ? '; this character is ancient, so feel free to reinterpret the category across a long life — e.g. "a student of several centuries" — rather than taking it literally'
+        : '') +
+      ')',
+  );
   if (rolled.hair_color) lines.push(`hair_color: ${rolled.hair_color}`);
   if (rolled.hair_style) lines.push(`hair_style: ${rolled.hair_style}`);
   lines.push(`eye_color: ${rolled.eye_color}`);

@@ -85,6 +85,10 @@ function stubSheet(gender, rolled) {
     age_note: rolled.apparent_only ? `appears ${rolled.age}, is far older` : null,
     background: rolled.background,
     species_detail: speciesDetail,
+    // Always the rolled values in --mock mode too, for the same reason as
+    // combat below: heritage is a closed vocabulary, never invented here.
+    heritage: rolled.heritage,
+    occupation: `(mock) an unspecified ${rolled.life_context} role`,
     personality: {
       tone: `${rolled.personality_seeds[0]} yet ${rolled.personality_seeds[1]}`,
       values: ['loyalty', 'curiosity', 'craft'],

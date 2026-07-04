@@ -26,6 +26,10 @@ import {
   PALETTE_ACCENTS,
   COMBAT_ARCHETYPES,
   COMBAT_SPECIES_MODIFIERS,
+  HERITAGES,
+  LIFE_CONTEXTS,
+  LIFE_CONTEXT_AGE_BANDS,
+  LIFE_CONTEXT_WEIGHTS,
 } from './tables.js';
 import { buildSystemPrompt, buildUserPrompt, buildRetrySuffix } from './prompt.js';
 
@@ -45,6 +49,10 @@ export {
   PALETTE_ACCENTS,
   COMBAT_ARCHETYPES,
   COMBAT_SPECIES_MODIFIERS,
+  HERITAGES,
+  LIFE_CONTEXTS,
+  LIFE_CONTEXT_AGE_BANDS,
+  LIFE_CONTEXT_WEIGHTS,
 };
 
 // ---------------------------------------------------------------------------
@@ -158,6 +166,34 @@ function resolveAge(userProfile, rng) {
   return { age, apparent_only: Boolean(range.apparent_only) };
 }
 
+function rollHeritage(rng) {
+  return pickWeighted(HERITAGES, rng);
+}
+
+// Maps an age to a column index into LIFE_CONTEXT_WEIGHTS, matching
+// LIFE_CONTEXT_AGE_BANDS: 0 -> 18-22, 1 -> 23-29, 2 -> 30-45, 3 -> 46+.
+// Exported so tests (and callers curious about band boundaries) can verify
+// the edges directly without reverse-engineering it from many rolls.
+export function resolveLifeContextBand(age) {
+  if (age <= 22) return 0;
+  if (age <= 29) return 1;
+  if (age <= 45) return 2;
+  return 3;
+}
+
+// For `timeless` characters `age` is already the APPARENT age (18-35, see
+// resolveAge/AGE_RANGES), so banding on it naturally uses the apparent-age
+// band — no special-casing needed here. The prompt separately tells the
+// model it may reinterpret the category for a centuries-old character.
+function rollLifeContext(age, rng) {
+  const band = resolveLifeContextBand(age);
+  const entries = Object.entries(LIFE_CONTEXT_WEIGHTS).map(([category, weights]) => ({
+    value: category,
+    weight: weights[band],
+  }));
+  return pickWeighted(entries, rng);
+}
+
 // ---------------------------------------------------------------------------
 // Stage 1: rollFields (pure)
 // ---------------------------------------------------------------------------
@@ -180,6 +216,8 @@ export function rollFields({ gender, userProfile = null, rng = Math.random } = {
   const quirk_seed = pick(QUIRK_SEEDS, rng);
   const palette_accent = pick(PALETTE_ACCENTS, rng);
   const combat = rollCombat(background, rng);
+  const heritage = rollHeritage(rng);
+  const life_context = rollLifeContext(age, rng);
 
   const rolled = {
     gender,
@@ -195,6 +233,8 @@ export function rollFields({ gender, userProfile = null, rng = Math.random } = {
     quirk_seed,
     palette_accent,
     combat,
+    heritage,
+    life_context,
   };
 
   // bust is rolled only for female characters; omitted otherwise.
@@ -216,6 +256,16 @@ export const CharacterSheetSchema = z.object({
   age_note: z.string().nullable(),
   background: z.enum(['human', 'elf', 'robot', 'beastkin']),
   species_detail: z.string().min(1),
+  // Rolled deterministically in Stage 1 (rollHeritage). The LLM is asked to
+  // echo this verbatim and let it drive the name's naming culture; castSoul
+  // re-stamps it after validation (same drift-proofing rationale as combat
+  // below — it's a closed vocabulary, so there's nothing lost by making the
+  // match structural instead of merely requested).
+  heritage: z.string().min(1),
+  // NOT rolled — the LLM's concrete specialization of the rolled
+  // life_context category (see buildUserPrompt), so it is validated but
+  // never overwritten.
+  occupation: z.string().min(1),
   personality: z.object({
     tone: z.string().min(1),
     values: z.array(z.string().min(1)).min(3).max(5),
@@ -321,6 +371,11 @@ export async function castSoul({ gender, userProfile = null, llm, rng = Math.ran
       // Re-stamping the rolled values here makes numeric drift structurally
       // impossible instead of merely unlikely.
       res.sheet.combat = structuredClone(rolled.combat);
+      // Same rationale as combat: heritage is a closed vocabulary rolled in
+      // Stage 1 (see HERITAGES in tables.js) — re-stamp it so an LLM
+      // paraphrase ("Japanese" vs "japanese") can never desync the sheet
+      // from the rolled value the naming instructions were built around.
+      res.sheet.heritage = rolled.heritage;
       return { sheet: res.sheet, rolled };
     }
     lastError = res.error;

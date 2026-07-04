@@ -281,6 +281,90 @@ export const COMBAT_SPECIES_MODIFIERS = {
   human: { intelligence: [0.0, 0.08] },
 };
 
+// ---------------------------------------------------------------------------
+// Heritage
+// ---------------------------------------------------------------------------
+//
+// Heritage drives the NAME's naming culture and, for humans, general feature
+// framing (e.g. skin tone / feature wording the LLM uses in appearance).
+// For non-humans (elf, beastkin, robot) it flavors the naming culture ONLY —
+// a japanese-heritage elf gets a Japanese-style name, never a real-world
+// ethnicity claim. A robot's "name" is really a designation; heritage flavors
+// that designation's naming convention (e.g. a nordic-heritage robot might
+// carry a Nordic-style designation), again never claiming real ethnicity for
+// a machine.
+//
+// Weighted so no single heritage dominates (cap ~20%) and the invented
+// fantasy option stays a modest minority (~10%) rather than a common escape
+// hatch.
+export const HERITAGES = [
+  { value: 'japanese', weight: 14 },
+  { value: 'korean', weight: 9 },
+  { value: 'chinese', weight: 12 },
+  { value: 'south-asian', weight: 9 },
+  { value: 'nordic', weight: 7 },
+  { value: 'slavic', weight: 7 },
+  { value: 'latin-american', weight: 8 },
+  { value: 'middle-eastern', weight: 7 },
+  { value: 'west-african', weight: 7 },
+  { value: 'anglo', weight: 10 },
+  // French / Italian / Spanish-European naming culture, grouped as one
+  // "Romance-language Europe" bucket rather than splitting into three tiny
+  // slices.
+  { value: 'romance', weight: 8 },
+  { value: 'fantasy-invented', weight: 10 },
+];
+
+// ---------------------------------------------------------------------------
+// Life context (occupation category)
+// ---------------------------------------------------------------------------
+//
+// We roll a coarse CATEGORY here, table-side, so distribution stays under our
+// control (10 weights, not hundreds of jobs). The LLM invents ONE concrete
+// occupation within the rolled category, consistent with age, heritage, and
+// personality — see buildSystemPrompt/buildUserPrompt in prompt.js. `hint` is
+// a short list of EXAMPLE specializations fed to the model as inspiration,
+// not an exhaustive menu.
+export const LIFE_CONTEXTS = {
+  student: { hint: 'university student, vocational school, final-year exam prepper' },
+  'service-retail': { hint: 'convenience-store clerk, cafe barista, izakaya waitress' },
+  'creative-performer': { hint: 'failed idol, aspiring mangaka, street musician, small-time streamer' },
+  'care-medical': { hint: 'night-shift nurse, elder-care worker, pharmacy assistant' },
+  'technical-craft': { hint: 'apprentice mechanic, carpenter, small electronics repair' },
+  'academic-professional': { hint: 'professor, museum curator, junior architect' },
+  'rural-outdoor': { hint: 'farmer, orchard keeper, fishing-boat hand' },
+  'spiritual-traditional': { hint: 'shrine keeper, monastery novice, tea-ceremony teacher' },
+  'in-between': { hint: 'recently quit, job-hunting, just moved to town' },
+  wildcard: { hint: 'anything plausible — invent freely, no example list constrains this one' },
+};
+
+// Age bands used to select the LIFE_CONTEXT_WEIGHTS column. For `timeless`
+// (apparent_only) characters, the roll uses the APPARENT age (already 18-35)
+// so it lands in band 0-2; the prompt separately invites the model to
+// reinterpret ("a student of several centuries").
+export const LIFE_CONTEXT_AGE_BANDS = ['18-22', '23-29', '30-45', '46+'];
+
+// Per-category weight across the four age bands above, in column order.
+// Tuned via scripts/identityStudy.js — see README.md "Life context" section
+// for the resulting distributions and the sanity targets these were tuned
+// against.
+export const LIFE_CONTEXT_WEIGHTS = {
+  // student band 0 bumped 30 -> 40 from the original draft: young-adult
+  // (age 18-25) straddles bands 0 and 1, so the blended average undershot
+  // the ~25-35% target at 30 (came out ~22%); 40 lands the blend at ~28%.
+  // See scripts/identityStudy.js output / README.md for the measured result.
+  student: [40, 8, 1, 0.5],
+  'service-retail': [18, 16, 10, 6],
+  'creative-performer': [16, 16, 10, 6],
+  'care-medical': [4, 10, 12, 10],
+  'technical-craft': [8, 14, 16, 14],
+  'academic-professional': [1, 8, 16, 18],
+  'rural-outdoor': [6, 8, 12, 18],
+  'spiritual-traditional': [3, 5, 8, 14],
+  'in-between': [10, 10, 8, 8],
+  wildcard: [4, 5, 5, 5],
+};
+
 // Outfit accent color words.
 export const PALETTE_ACCENTS = [
   'crimson',
