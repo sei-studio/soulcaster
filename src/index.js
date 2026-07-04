@@ -24,6 +24,8 @@ import {
   PERSONALITY_SEEDS,
   QUIRK_SEEDS,
   PALETTE_ACCENTS,
+  COMBAT_ARCHETYPES,
+  COMBAT_SPECIES_MODIFIERS,
 } from './tables.js';
 import { buildSystemPrompt, buildUserPrompt, buildRetrySuffix } from './prompt.js';
 
@@ -41,6 +43,8 @@ export {
   PERSONALITY_SEEDS,
   QUIRK_SEEDS,
   PALETTE_ACCENTS,
+  COMBAT_ARCHETYPES,
+  COMBAT_SPECIES_MODIFIERS,
 };
 
 // ---------------------------------------------------------------------------
@@ -104,6 +108,43 @@ function rollInt(min, max, rng) {
   return min + Math.floor(rng() * (max - min + 1));
 }
 
+// Uniform float in [min,max).
+function rollFloat(min, max, rng) {
+  return min + rng() * (max - min);
+}
+
+// Quantize to 0.05 steps and clamp to [0,1]. Goes through a fixed-point
+// round-trip (not just Math.round(v/0.05)*0.05) to avoid float noise like
+// 0.35000000000000003 leaking into the rolled/validated output.
+function quantize05(value) {
+  const clamped = Math.min(1, Math.max(0, value));
+  const steps = Math.round(clamped / 0.05);
+  return Math.round(steps * 5) / 100;
+}
+
+const COMBAT_STATS = ['melee', 'ranged', 'defense', 'intelligence'];
+
+// Stage 1 combat roll: pick a weighted archetype, roll each stat within its
+// band, apply a small per-species bump, then quantize. See the
+// COMBAT_ARCHETYPES / COMBAT_SPECIES_MODIFIERS comment in tables.js for the
+// gameplay meaning of each stat and the reasoning behind archetype bands.
+function rollCombat(background, rng) {
+  const archetype = pickWeighted(COMBAT_ARCHETYPES, rng);
+  const modifiers = COMBAT_SPECIES_MODIFIERS[background] || {};
+
+  const combat = { archetype: archetype.label };
+  for (const stat of COMBAT_STATS) {
+    const [min, max] = archetype[stat];
+    let value = rollFloat(min, max, rng);
+    const modBand = modifiers[stat];
+    if (modBand) {
+      value += rollFloat(modBand[0], modBand[1], rng);
+    }
+    combat[stat] = quantize05(value);
+  }
+  return combat;
+}
+
 function rollEyeColor(rng) {
   // ~8% chance of a rare special (heterochromia) roll.
   if (rng() < 0.08) return pick(EYE_SPECIAL, rng);
@@ -138,6 +179,7 @@ export function rollFields({ gender, userProfile = null, rng = Math.random } = {
   const personality_seeds = pickTwoDistinct(PERSONALITY_SEEDS, rng);
   const quirk_seed = pick(QUIRK_SEEDS, rng);
   const palette_accent = pick(PALETTE_ACCENTS, rng);
+  const combat = rollCombat(background, rng);
 
   const rolled = {
     gender,
@@ -152,6 +194,7 @@ export function rollFields({ gender, userProfile = null, rng = Math.random } = {
     personality_seeds,
     quirk_seed,
     palette_accent,
+    combat,
   };
 
   // bust is rolled only for female characters; omitted otherwise.
@@ -181,6 +224,16 @@ export const CharacterSheetSchema = z.object({
   }),
   backstory: z.string().min(1),
   voice_style: z.string().min(1),
+  // Rolled deterministically in Stage 1 (rollCombat). The LLM is asked to
+  // echo this verbatim, but castSoul overwrites it with the rolled value
+  // after validation regardless — see the comment at that call site.
+  combat: z.object({
+    archetype: z.string().min(1),
+    melee: z.number().min(0).max(1),
+    ranged: z.number().min(0).max(1),
+    defense: z.number().min(0).max(1),
+    intelligence: z.number().min(0).max(1),
+  }),
   appearance: z.object({
     overall: z.string().min(1),
     hair: z.string().nullable(),
@@ -260,6 +313,14 @@ export async function castSoul({ gender, userProfile = null, llm, rng = Math.ran
     lastRaw = raw;
     const res = parseAndValidate(raw);
     if (res.ok) {
+      // Authoritative overwrite: combat is a gameplay-facing numeric contract
+      // (hit chances, dodge chance, reaction timing) consumed by the bot
+      // adapter. Even though the prompt asks the model to echo it verbatim,
+      // an LLM can still drift a digit on retries or paraphrase a number —
+      // that would silently desync bot behavior from what the sheet says.
+      // Re-stamping the rolled values here makes numeric drift structurally
+      // impossible instead of merely unlikely.
+      res.sheet.combat = structuredClone(rolled.combat);
       return { sheet: res.sheet, rolled };
     }
     lastError = res.error;

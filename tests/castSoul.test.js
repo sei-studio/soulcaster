@@ -19,6 +19,13 @@ function validSheet(overrides = {}) {
     },
     backstory: 'A long enough backstory for the test.',
     voice_style: 'clipped, wry, warms up over time',
+    combat: {
+      archetype: 'skirmisher',
+      melee: 0.3,
+      ranged: 0.55,
+      defense: 0.7,
+      intelligence: 0.55,
+    },
     appearance: {
       overall: 'a short lithe figure',
       hair: 'auburn side braid',

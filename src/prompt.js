@@ -16,6 +16,7 @@ RULES:
   - robot: pick a type (android / heavy chassis / porcelain automaton, etc.) and describe the material and finish.
   - human: describe skin tone and any notable human features.
 - The backstory MUST be 150 to 300 words and must explain HOW the appearance and the personality cohere — why this person looks and acts this way.
+- combat below is a pre-rolled set of four fight-style numbers (melee, ranged, defense, intelligence, each 0 to 1) plus an archetype label. Echo the combat object in your JSON EXACTLY as given — same archetype string, same four numbers, no rounding or rewording. Then let the backstory and personality COHERE with it: a 0.9-melee 0.1-intelligence juggernaut fights by brute force and probably thinks fights are simple, while a 0.9-intelligence 0.1-melee tactician avoids a fair fight entirely and wins on positioning and timing. The numbers should read as consistent with who this person is, not bolted on.
 - Be ULTRA-SPECIFIC everywhere. Prefer concrete nouns and exact colors over vague adjectives. The character must be reproducible: an image model reading image_prompt should draw the same character every time.
 - image_prompt is ONE self-contained paragraph, a full-body head-to-toe visual description consistent with every other field. Do NOT include any art-style words (no "anime", "realistic", "3D render", "pixel art", etc.) — the caller appends the style. Describe only the character.
 - No em-dashes in your prose.
@@ -32,6 +33,7 @@ Return STRICT JSON only — a single object, no prose before or after, no markdo
   "personality": { "tone": string, "values": string[], "quirks": string[], "fears": string[] },
   "backstory": string,
   "voice_style": string,
+  "combat": { "archetype": string, "melee": number, "ranged": number, "defense": number, "intelligence": number },
   "appearance": {
     "overall": string,
     "hair": string | null,
@@ -65,6 +67,9 @@ export function buildUserPrompt({ gender, userProfile, rolled }) {
   lines.push(`personality_seeds: ${rolled.personality_seeds.join(', ')} (blend these two temperaments)`);
   lines.push(`quirk_seed: ${rolled.quirk_seed}`);
   lines.push(`palette_accent: ${rolled.palette_accent} (use as the outfit's accent color)`);
+  lines.push(
+    `combat: ${JSON.stringify(rolled.combat)} (echo this object verbatim as the "combat" field; write the backstory and personality so they cohere with this fighting style)`,
+  );
 
   const extras = userPreferenceLines(userProfile);
   if (extras.length) {

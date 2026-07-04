@@ -97,6 +97,10 @@ function stubSheet(gender, rolled) {
       'weaves the rolled fields into a 150 to 300 word history explaining how the ' +
       "character's look and temperament came to be.",
     voice_style: 'speaks plainly, with short sentences and a dry edge',
+    // Always the rolled value, never invented — see castSoul's authoritative
+    // overwrite in src/index.js for why this is never LLM-derived even in a
+    // real (non-mock) run.
+    combat: rolled.combat,
     appearance: {
       overall: `a ${rolled.height} ${rolled.build} figure`,
       hair: hasHair ? `${rolled.hair_color} ${rolled.hair_style}` : null,
