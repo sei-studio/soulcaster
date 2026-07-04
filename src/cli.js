@@ -78,12 +78,19 @@ function stubSheet(gender, rolled) {
     robot: 'porcelain-plated android with brushed-steel joints',
   }[rolled.background];
 
+  // A plausible default per species so --mock output stays schema-valid:
+  // elf/beastkin lean fantasy, robot leans futuristic, human lands on
+  // modern. Real (non-mock) runs let the LLM choose this per the
+  // reconciliation rules in buildSystemPrompt.
+  const setting = { human: 'modern', elf: 'fantasy', beastkin: 'fantasy', robot: 'futuristic' }[rolled.background];
+
   return {
     name: 'Stub',
     gender,
     age: rolled.age,
     age_note: rolled.apparent_only ? `appears ${rolled.age}, is far older` : null,
     background: rolled.background,
+    setting,
     species_detail: speciesDetail,
     // Always the rolled values in --mock mode too, for the same reason as
     // combat below: heritage is a closed vocabulary, never invented here.

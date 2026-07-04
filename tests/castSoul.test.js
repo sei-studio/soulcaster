@@ -10,6 +10,7 @@ function validSheet(overrides = {}) {
     age: 27,
     age_note: null,
     background: 'beastkin',
+    setting: 'modern',
     species_detail: 'fox-person with tall russet ears and a full brush tail',
     heritage: 'japanese',
     occupation: 'night-shift convenience store clerk',
@@ -124,4 +125,20 @@ test('castSoul retry: schema failure (valid JSON, wrong shape) then valid', asyn
 
 test('castSoul requires an llm function', async () => {
   await assert.rejects(() => castSoul({ gender: 'female' }), /requires an `llm` function/);
+});
+
+test('CharacterSheetSchema rejects a missing or invalid setting', () => {
+  const missing = JSON.parse(validSheet());
+  delete missing.setting;
+  assert.equal(CharacterSheetSchema.safeParse(missing).success, false);
+
+  const invalid = JSON.parse(validSheet({ setting: 'cyberpunk' }));
+  assert.equal(CharacterSheetSchema.safeParse(invalid).success, false);
+});
+
+test('CharacterSheetSchema accepts every valid setting value', () => {
+  for (const setting of ['fantasy', 'modern', 'futuristic', 'historical']) {
+    const sheet = JSON.parse(validSheet({ setting }));
+    assert.ok(CharacterSheetSchema.safeParse(sheet).success);
+  }
 });

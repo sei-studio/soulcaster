@@ -83,6 +83,10 @@ The band is chosen from the character's own rolled age (the apparent age, for `t
 
 Each category carries a short `hint` string of example specializations (e.g. student: "university student, vocational school, final-year exam prepper") fed to the LLM as inspiration, not an exhaustive menu. The LLM's output lands in the `occupation` field. Unlike combat, heritage and occupation are meant to shape the backstory: they are identity, not just gameplay.
 
+### Setting
+
+The LLM picks one `setting` (`fantasy`, `modern`, `futuristic`, or `historical`) before writing anything else, reconciling the rolled `background` species with the occupation it is about to invent, then keeps outfit, accessories, backstory details, and `image_prompt` inside that single register. Elf and beastkin default to fantasy, robot defaults to futuristic, and human follows the occupation. A fantasy species with a modern occupation is allowed and reads as urban fantasy: the species lives in today's world under a `modern` setting. `setting` is chosen by the LLM, not rolled in Stage 1, because a blind roll could hand a farmhand elf a futuristic setting with no way to reconcile it.
+
 ### Combat
 
 `rollFields` also rolls a `combat` block: four stats in `[0,1]`, quantized to 0.05 steps, plus an archetype label.
@@ -98,7 +102,7 @@ Independent uniform rolls per stat would cluster every character mid-pack, so th
 
 ### LLM consolidation contract
 
-`castSoul` builds a system prompt and a user prompt (rolled fields plus any user preferences) and calls the injected `llm` function. The model must echo the rolled, closed-vocabulary fields verbatim (background, combat, heritage) and invent the rest (name, species_detail, occupation, personality, backstory, appearance, image_prompt) as strict JSON, validated against `CharacterSheetSchema` (zod). On a parse or schema failure, it retries once with the validation error appended, then throws a typed `SoulcasterError`.
+`castSoul` builds a system prompt and a user prompt (rolled fields plus any user preferences) and calls the injected `llm` function. The model must echo the rolled, closed-vocabulary fields verbatim (background, combat, heritage) and invent the rest (setting, name, species_detail, occupation, personality, backstory, appearance, image_prompt) as strict JSON, validated against `CharacterSheetSchema` (zod). `setting` is its own case: a closed enum like background, but chosen by the model rather than rolled, so it is validated like the rolled fields yet never re-stamped like them. On a parse or schema failure, it retries once with the validation error appended, then throws a typed `SoulcasterError`.
 
 After validation, `castSoul` re-stamps `sheet.combat` and `sheet.heritage` from the rolled values regardless of what the model echoed. Both are closed vocabularies rolled deterministically in Stage 1, so a paraphrase or dropped digit on retry can never desync the sheet from what was actually rolled. `occupation` is not rolled and is never overwritten; it is pure LLM invention, only validated.
 
@@ -162,6 +166,7 @@ const { sheet, rolled: rolledUsed } = await castSoul({
   name,                    // follows heritage's naming culture
   gender, age, age_note,   // age_note e.g. "appears 24, is 312", or null
   background,              // human | elf | robot | beastkin
+  setting,                 // fantasy | modern | futuristic | historical, chosen by the LLM
   species_detail,          // e.g. "wood elf with tapered ears"
   heritage,                // rolled naming culture, re-stamped after validation
   occupation,              // LLM's concrete specialization of the rolled life_context

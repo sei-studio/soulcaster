@@ -255,6 +255,12 @@ export const CharacterSheetSchema = z.object({
   age: z.number(),
   age_note: z.string().nullable(),
   background: z.enum(['human', 'elf', 'robot', 'beastkin']),
+  // NOT rolled — the LLM's own choice of world register, reconciling
+  // background (species) with occupation before it writes anything else. See
+  // buildSystemPrompt for the reconciliation rules. Unlike combat/heritage
+  // below, castSoul never re-stamps this: it is pure LLM judgment, only
+  // schema-validated.
+  setting: z.enum(['fantasy', 'modern', 'futuristic', 'historical']),
   species_detail: z.string().min(1),
   // Rolled deterministically in Stage 1 (rollHeritage). The LLM is asked to
   // echo this verbatim and let it drive the name's naming culture; castSoul
