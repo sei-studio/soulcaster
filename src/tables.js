@@ -22,7 +22,7 @@ export const DEFAULT_AGE_RANGE = { min: 18, max: 60 };
 
 // Weighted: human is the common case, robot the rarest.
 export const BACKGROUNDS = [
-  { value: 'human', weight: 45 },
+  { value: 'human', weight: 55 },
   { value: 'elf', weight: 20 },
   { value: 'beastkin', weight: 20 },
   { value: 'robot', weight: 15 },
