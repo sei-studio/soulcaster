@@ -31,7 +31,10 @@ import {
   LIFE_CONTEXT_AGE_BANDS,
   LIFE_CONTEXT_WEIGHTS,
 } from './tables.js';
+import { VOICES, SEED_VOICE_TAGS } from './voices.js';
 import { buildSystemPrompt, buildUserPrompt, buildRetrySuffix } from './prompt.js';
+
+export { VOICES, SEED_VOICE_TAGS, VOICE_TAGS } from './voices.js';
 
 export {
   AGE_RANGES,
@@ -194,13 +197,77 @@ function rollLifeContext(age, rng) {
   return pickWeighted(entries, rng);
 }
 
+// Maps a rolled age to the coarse voice age band used by the VOICES table.
+export function resolveVoiceAgeBand(age) {
+  if (age <= 27) return 'young';
+  if (age <= 50) return 'adult';
+  return 'elder';
+}
+
+// Stage 1 voice roll. Appropriateness is table-side, like everything else:
+// hard-filter by character gender (plus the special robotic rule), then weight
+// by age-band proximity and personality-seed tag affinity. `takenVoiceIds`
+// lets the caller exclude voices its OTHER characters already use, which is
+// what keeps voice overlap across a user's roster rare — the exclusion is
+// dropped only if it would empty the pool. See scripts/voiceStudy.js for the
+// measured distribution and collision rates.
+export function rollVoice({ gender, age, background, personality_seeds }, { takenVoiceIds = [], rng = Math.random } = {}) {
+  const band = resolveVoiceAgeBand(age);
+
+  let pool = VOICES.filter((v) => {
+    // Robotic voices are only offered to robot characters; a human with a
+    // synthesizer voice reads as a bug, not variety.
+    if (v.tags.includes('robotic') && background !== 'robot') return false;
+    if (gender === 'female') return v.gender === 'female' || v.gender === 'neutral';
+    if (gender === 'male') return v.gender === 'male' || v.gender === 'neutral';
+    return true; // 'other' may draw from the whole pool
+  });
+
+  if (takenVoiceIds.length) {
+    const taken = new Set(takenVoiceIds);
+    const remaining = pool.filter((v) => !taken.has(v.id));
+    if (remaining.length) pool = remaining;
+  }
+
+  const entries = pool
+    .map((v) => {
+      // Age proximity: exact band strongly preferred, adjacent allowed,
+      // young<->elder effectively excluded (tiny epsilon keeps the pool
+      // non-empty in degenerate cases, e.g. every same-band voice taken).
+      let weight;
+      if (v.age === band) weight = 6;
+      else if ((v.age === 'young' && band === 'elder') || (v.age === 'elder' && band === 'young')) weight = 0.01;
+      else weight = 1.5;
+
+      // Neutral voices are a spice for gendered characters, the core pool for
+      // 'other' characters.
+      if (v.gender === 'neutral') weight *= gender === 'other' ? 4 : 0.5;
+
+      // Personality affinity: each rolled seed whose tag set intersects the
+      // voice's tags doubles the weight (up to x4 for both seeds).
+      for (const seed of personality_seeds || []) {
+        const tags = SEED_VOICE_TAGS[seed] || [];
+        if (tags.some((t) => v.tags.includes(t))) weight *= 2;
+      }
+
+      // Robots strongly prefer the actually-robotic voices when available.
+      if (background === 'robot' && v.tags.includes('robotic')) weight *= 10;
+
+      return { value: v, weight };
+    })
+    .filter((e) => e.weight > 0);
+
+  const voice = pickWeighted(entries, rng);
+  return { id: voice.id, label: voice.label, vibe: voice.vibe };
+}
+
 // ---------------------------------------------------------------------------
 // Stage 1: rollFields (pure)
 // ---------------------------------------------------------------------------
 
 const GENDERS = ['male', 'female', 'other'];
 
-export function rollFields({ gender, userProfile = null, rng = Math.random } = {}) {
+export function rollFields({ gender, userProfile = null, takenVoiceIds = [], rng = Math.random } = {}) {
   if (!GENDERS.includes(gender)) {
     throw new SoulcasterError(`gender must be one of ${GENDERS.join('|')}, got: ${JSON.stringify(gender)}`);
   }
@@ -218,6 +285,7 @@ export function rollFields({ gender, userProfile = null, rng = Math.random } = {
   const combat = rollCombat(background, rng);
   const heritage = rollHeritage(rng);
   const life_context = rollLifeContext(age, rng);
+  const voice = rollVoice({ gender, age, background, personality_seeds }, { takenVoiceIds, rng });
 
   const rolled = {
     gender,
@@ -235,6 +303,7 @@ export function rollFields({ gender, userProfile = null, rng = Math.random } = {
     combat,
     heritage,
     life_context,
+    voice,
   };
 
   // bust is rolled only for female characters; omitted otherwise.
@@ -280,6 +349,10 @@ export const CharacterSheetSchema = z.object({
   }),
   backstory: z.string().min(1),
   voice_style: z.string().min(1),
+  // NOT produced by the LLM: castSoul stamps this from the rolled voice after
+  // validation (same drift-proofing pattern as combat/heritage). It is the
+  // ElevenLabs voice id from the curated pool in voices.js.
+  voice_id: z.string().min(1).optional(),
   // Rolled deterministically in Stage 1 (rollCombat). The LLM is asked to
   // echo this verbatim, but castSoul overwrites it with the rolled value
   // after validation regardless — see the comment at that call site.
@@ -345,12 +418,14 @@ function parseAndValidate(rawText) {
 // ---------------------------------------------------------------------------
 
 // llm signature: async ({ system, user, maxTokens }) => string
-export async function castSoul({ gender, userProfile = null, llm, rng = Math.random } = {}) {
+// takenVoiceIds: ElevenLabs voice ids already used by the caller's other
+// characters — excluded from the voice roll so roster voices rarely collide.
+export async function castSoul({ gender, userProfile = null, takenVoiceIds = [], llm, rng = Math.random } = {}) {
   if (typeof llm !== 'function') {
     throw new SoulcasterError('castSoul requires an `llm` function: async ({ system, user, maxTokens }) => string');
   }
 
-  const rolled = rollFields({ gender, userProfile, rng });
+  const rolled = rollFields({ gender, userProfile, takenVoiceIds, rng });
   const system = buildSystemPrompt();
   const baseUser = buildUserPrompt({ gender, userProfile, rolled });
 
@@ -382,6 +457,10 @@ export async function castSoul({ gender, userProfile = null, llm, rng = Math.ran
       // paraphrase ("Japanese" vs "japanese") can never desync the sheet
       // from the rolled value the naming instructions were built around.
       res.sheet.heritage = rolled.heritage;
+      // The voice id is pure Stage 1 data the LLM never sees as an output
+      // field; stamp it so the sheet carries the TTS voice without any chance
+      // of model drift.
+      res.sheet.voice_id = rolled.voice.id;
       return { sheet: res.sheet, rolled };
     }
     lastError = res.error;

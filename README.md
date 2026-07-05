@@ -100,6 +100,14 @@ Independent uniform rolls per stat would cluster every character mid-pack, so th
 
 **Combat is in-game playstyle only.** It is never derived from or woven into personality or backstory: a shy student can be a lobby-topping sharpshooter. This is the opposite rule from heritage and occupation above, which the backstory should draw on.
 
+### Voice
+
+`rollFields` also rolls a `voice` from the curated ElevenLabs pool in `src/voices.js` (63 voices, each tagged with gender, an age band, and personality tags). The roll is table-side like everything else: gender is a hard filter (neutral voices are eligible for everyone, and are the core pool for `other` characters), young and elder bands never cross, robotic voices are reserved for `robot` backgrounds, and personality-seed tag affinity multiplies the weights so the voice suits the temperament. The rolled `{ id, label, vibe }` is fed to the LLM so `voice_style` prose matches the actual sound, and `castSoul` stamps `sheet.voice_id` after validation (same re-stamp pattern as combat and heritage; the model never chooses the voice).
+
+Callers pass `takenVoiceIds` (the voice ids of the user's other companions) to `rollFields`/`castSoul`; those are excluded from the pool unless exclusion would empty it. `node scripts/voiceStudy.js` measures the result: with `takenVoiceIds` a 4-companion roster repeats a voice 0% of the time, and two fully independent same-gender rolls collide under 4%.
+
+`scripts/syncVoices.js` makes an ElevenLabs account usable with the table: it adds every shared-library voice to the account (adding preserves the public voice id) and verifies the premade ones exist. Run it once per account/key: `ELEVENLABS_API_KEY=... node scripts/syncVoices.js`.
+
 ### LLM consolidation contract
 
 `castSoul` builds a system prompt and a user prompt (rolled fields plus any user preferences) and calls the injected `llm` function. The model must echo the rolled, closed-vocabulary fields verbatim (background, combat, heritage) and invent the rest (setting, name, species_detail, occupation, personality, backstory, appearance, image_prompt) as strict JSON, validated against `CharacterSheetSchema` (zod). `setting` is its own case: a closed enum like background, but chosen by the model rather than rolled, so it is validated like the rolled fields yet never re-stamped like them. On a parse or schema failure, it retries once with the validation error appended, then throws a typed `SoulcasterError`.

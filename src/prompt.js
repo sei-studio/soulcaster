@@ -85,6 +85,11 @@ export function buildUserPrompt({ gender, userProfile, rolled }) {
   lines.push(`build: ${rolled.build}`);
   if (rolled.bust) lines.push(`bust: ${rolled.bust}`);
   lines.push(`personality_seeds: ${rolled.personality_seeds.join(', ')} (blend these two temperaments)`);
+  if (rolled.voice) {
+    lines.push(
+      `voice: ${rolled.voice.label} — sounds like: ${rolled.voice.vibe} (this is the character's literal speaking voice, pre-assigned; write "voice_style" as a description of how they speak that fits BOTH this sound and the personality — do not contradict the sound, e.g. no "booming baritone" for a soft voice)`,
+    );
+  }
   lines.push(`quirk_seed: ${rolled.quirk_seed}`);
   lines.push(`palette_accent: ${rolled.palette_accent} (use as the outfit's accent color)`);
   lines.push(
