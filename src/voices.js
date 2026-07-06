@@ -56,6 +56,7 @@ export const VOICES = [
   { id: '4BAlflaQyhIcCfHiEI7x', owner: '64cbc624eb5aab4e95a968e1f41d75402277cca6e549036ed17e56ea33bbbc9e', label: 'Tess', gender: 'female', age: 'adult', tags: ['wise', 'steady', 'commanding'], vibe: 'direct and grounded, no-nonsense British' },
   { id: 'FCYF8vBfwu11whOhvb94', owner: '64cbc624eb5aab4e95a968e1f41d75402277cca6e549036ed17e56ea33bbbc9e', label: 'Jade', gender: 'female', age: 'adult', tags: ['raspy', 'dry', 'dark', 'casual'], vibe: 'edgy and nonchalant, a raspy shrug of a voice, American accent' },
   { id: 'mrmaApeLxpgZi4RK7oGq', owner: '6ee30dd5a46fe2743d8eb1d6c1528a17cd5557b79bb63e2ffc775efd3cf941d2', label: 'Meaghan', gender: 'female', age: 'adult', tags: ['casual', 'warm'], vibe: 'relaxed, everyday American' },
+  { id: 'u6a6bRv82Zfi9NzoIqvt', owner: 'c175136d2654486b92e9a2c2e83bc31dee510255df7d5e5d6c7e729234851d99', label: 'Lia', gender: 'female', age: 'adult', tags: ['calm', 'gentle', 'warm'], vibe: 'clear and calm, Japanese-accented English' },
   // elder
   { id: 'xIzR6egd3S3LJZbVW0c1', owner: 'a94a9f377c73aede55c18062ec4a353157e2898a7f0dcb96bbb492b6084a0e87', label: 'Margaret', gender: 'female', age: 'elder', tags: ['gentle', 'warm', 'calm'], vibe: 'a sweet little old lady, gentle and unhurried, American accent' },
   { id: '2qQJWjw5XdG80GreshqG', owner: '64cbc624eb5aab4e95a968e1f41d75402277cca6e549036ed17e56ea33bbbc9e', label: 'Eleanor', gender: 'female', age: 'elder', tags: ['classy', 'commanding', 'wise', 'calm'], vibe: 'gracious and authoritative, aged British elegance' },
