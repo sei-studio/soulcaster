@@ -15,6 +15,7 @@ import {
   QUIRK_SEEDS,
   PALETTE_ACCENTS,
   AGE_RANGES,
+  DYNAMICS,
 } from '../src/index.js';
 
 test('determinism: same seed yields identical rolls', () => {
@@ -123,4 +124,53 @@ test('no profile: age falls within default 18-60', () => {
     assert.ok(r.age >= 18 && r.age <= 60, `age ${r.age} out of default range`);
     assert.equal(r.apparent_only, false);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Relationship dynamics
+// ---------------------------------------------------------------------------
+
+test('every DYNAMICS seed_pool entry exists in PERSONALITY_SEEDS', () => {
+  for (const [key, d] of Object.entries(DYNAMICS)) {
+    assert.ok(Array.isArray(d.seed_pool) && d.seed_pool.length >= 3, `${key} pool too small`);
+    for (const seed of d.seed_pool) {
+      assert.ok(PERSONALITY_SEEDS.includes(seed), `${key} pool entry not a personality seed: ${seed}`);
+    }
+    assert.ok(typeof d.label === 'string' && d.label.length > 0);
+    assert.ok(typeof d.hint === 'string' && d.hint.length > 0);
+  }
+});
+
+test('invalid dynamic throws', () => {
+  assert.throws(() => rollFields({ gender: 'female', dynamic: 'soulmate' }), /dynamic must be one of/);
+});
+
+test('no dynamic: rolled.dynamic is null and both seeds free-roll', () => {
+  const r = rollFields({ gender: 'male', rng: mulberry32(11) });
+  assert.equal(r.dynamic, null);
+  assert.equal(r.personality_seeds.length, 2);
+});
+
+test('dynamic biases seed 1 into the pool; seed 2 stays free and distinct', () => {
+  for (const [key, d] of Object.entries(DYNAMICS)) {
+    const outsidePoolSeen = new Set();
+    for (let i = 0; i < 400; i += 1) {
+      const r = rollFields({ gender: 'female', dynamic: key, rng: mulberry32(i * 7 + 1) });
+      assert.equal(r.dynamic, key);
+      const [first, second] = r.personality_seeds;
+      assert.ok(d.seed_pool.includes(first), `${key}: seed 1 "${first}" not in pool`);
+      assert.ok(PERSONALITY_SEEDS.includes(second));
+      assert.notEqual(first, second);
+      if (!d.seed_pool.includes(second)) outsidePoolSeen.add(second);
+    }
+    // Seed 2 must be a FREE roll: across 400 casts it must escape the pool
+    // sometimes, or two same-dynamic companions would all feel alike.
+    assert.ok(outsidePoolSeen.size > 0, `${key}: seed 2 never left the pool`);
+  }
+});
+
+test('dynamic rolls stay deterministic under the same seed', () => {
+  const a = rollFields({ gender: 'other', dynamic: 'challenger', rng: mulberry32(99) });
+  const b = rollFields({ gender: 'other', dynamic: 'challenger', rng: mulberry32(99) });
+  assert.deepEqual(a, b);
 });

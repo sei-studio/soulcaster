@@ -134,6 +134,7 @@ test('castSoul stamps voice_id from the roll and tells the model the voice', asy
       occupation: 'barista',
       personality: { tone: 'warm', values: ['a', 'b', 'c'], quirks: ['q1', 'q2'], fears: ['f1'] },
       backstory: 'words '.repeat(40).trim(),
+      player_dynamic: null,
       voice_style: 'soft and warm',
       combat: { archetype: 'balanced', melee: 0.5, ranged: 0.5, defense: 0.5, intelligence: 0.5 },
       appearance: {

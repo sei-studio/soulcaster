@@ -151,6 +151,47 @@ export const QUIRK_SEEDS = [
 ];
 
 // ---------------------------------------------------------------------------
+// Relationship dynamics
+// ---------------------------------------------------------------------------
+//
+// What the user is looking for in a companion, ranked once at onboarding
+// (the client stores the ranking; the Nth unique cast passes the Nth ranked
+// key here as `dynamic`). Each dynamic biases the Stage 1 personality roll —
+// seed 1 is drawn from `seed_pool`, seed 2 stays a free roll from the full
+// PERSONALITY_SEEDS list so two casts with the same dynamic still differ —
+// and adds one Stage 2 prompt line so the sheet's tone, values, and
+// player_dynamic serve the relationship. `label` is user-visible phrasing
+// echoed into the prompt; `hint` is model-facing guidance only.
+// Every seed_pool entry MUST exist in PERSONALITY_SEEDS (tests enforce it).
+export const DYNAMICS = {
+  'partner-in-crime': {
+    label: 'a partner in crime',
+    hint: 'co-conspirator energy: playful, scheme-hatching, always game for the questionable idea, and loyal when it goes sideways',
+    seed_pool: ['mischievous', 'scheming', 'playful', 'reckless', 'sardonic'],
+  },
+  caretaker: {
+    label: 'someone who looks after you',
+    hint: 'warm and steady, protective without smothering; notices when their player is struggling and quietly handles things',
+    seed_pool: ['motherly', 'devoted', 'gentle', 'earnest', 'serene'],
+  },
+  protege: {
+    label: 'someone to look after',
+    hint: 'a little green or unsure of themselves, eager to learn, openly grateful; grows in confidence at their player’s side',
+    seed_pool: ['timid', 'curious', 'earnest', 'sunny', 'restless'],
+  },
+  'chill-friend': {
+    label: 'a chill, easygoing friend',
+    hint: 'low-drama, comfortable-silence company; unhurried, wry, easy to be around',
+    seed_pool: ['serene', 'dry-witted', 'stoic', 'sunny', 'playful'],
+  },
+  challenger: {
+    label: 'someone who pushes you',
+    hint: 'sharp and competitive, holds their player to a high standard; teasing rivalry with real respect underneath',
+    seed_pool: ['fierce', 'blunt', 'proud', 'zealous', 'sardonic'],
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Combat archetypes
 // ---------------------------------------------------------------------------
 //
