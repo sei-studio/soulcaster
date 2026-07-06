@@ -54,6 +54,12 @@ Hair color (22 options, natural spectrum plus fantasy colors), hair style, eye c
 
 Two distinct temperament words are picked from a 24-word list (`PERSONALITY_SEEDS`) and handed to the LLM as "blend these two," which forces contrast (e.g. "scheming yet devoted") instead of one flat trait. A single quirk seed (`QUIRK_SEEDS`, 16 options) gives the model a concrete habit to build from.
 
+### Relationship dynamics
+
+`rollFields` and `castSoul` take an optional `dynamic`: one of `partner-in-crime`, `caretaker` (someone who looks after you), `protege` (someone to look after), `chill-friend`, or `challenger` (someone who pushes you) — see `DYNAMICS` in `src/tables.js`. This is what the user said they are looking for in a companion; the caller resolves which dynamic applies to a given cast (in Sei, users rank dynamics at onboarding and the Nth unique companion uses the Nth ranked entry).
+
+A dynamic biases the personality roll: seed 1 is drawn from the dynamic's `seed_pool` so the relationship reliably reads through, while seed 2 stays a free roll from the full list so two casts with the same dynamic still differ. The prompt also gains a `relationship_dynamic` line, and the sheet gains a `player_dynamic` field (one or two sentences on who the character is to the player). The player never appears in the backstory. With no dynamic, `player_dynamic` is derived from the personality by the model.
+
 ### Heritage
 
 `HERITAGES` is a weighted table of 12 naming cultures: japanese, korean, chinese, south-asian, nordic, slavic, latin-american, middle-eastern, west-african, anglo, romance (French/Italian/Spanish-European), and fantasy-invented. No single heritage is weighted above ~20%, and fantasy-invented stays a modest ~9-10% so it is not the default escape hatch.
@@ -173,6 +179,11 @@ const { sheet, rolled: rolledUsed } = await castSoul({
   personality: { tone, values /* 3-5 */, quirks /* 2-3 */, fears /* 1-2 */ },
   backstory,               // 150 to 300 words, weaves in heritage and occupation
   voice_style,
+  punctuation,             // casual | deliberate — texting register, defaults casual.
+                           // casual = normal modern texting, no sentence-ending periods
+                           // (most characters). deliberate = ends sentences with full
+                           // stops on purpose (deadpan, measured, can read
+                           // passive-aggressive); the client enforces it in chat.
   combat: {                // rolled in Stage 1, re-stamped after validation
     archetype,
     melee, ranged, defense, intelligence   // 0 to 1, quantized to 0.05 steps

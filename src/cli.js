@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // soulcaster CLI — for testing and manual generation.
 //
-//   node src/cli.js --gender female [--profile profile.json] [--seed 42] [--mock]
+//   node src/cli.js --gender female [--dynamic caretaker] [--profile profile.json] [--seed 42] [--mock]
 //
 // --mock  skip the LLM: print the rolled fields plus a stub sheet.
 // no flag use ANTHROPIC_API_KEY from env (plain fetch to the Anthropic API).
@@ -13,10 +13,11 @@ import { readFileSync } from 'node:fs';
 import { rollFields, castSoul, mulberry32 } from './index.js';
 
 function parseArgs(argv) {
-  const args = { gender: null, profile: null, seed: null, mock: false };
+  const args = { gender: null, dynamic: null, profile: null, seed: null, mock: false };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--gender') args.gender = argv[++i];
+    else if (a === '--dynamic') args.dynamic = argv[++i];
     else if (a === '--profile') args.profile = argv[++i];
     else if (a === '--seed') args.seed = Number(argv[++i]);
     else if (a === '--mock') args.mock = true;
@@ -33,6 +34,8 @@ Usage:
 
 Options:
   --gender   required: male | female | other
+  --dynamic  relationship dynamic for this cast:
+             partner-in-crime | caretaker | protege | chill-friend | challenger
   --profile  path to a JSON user profile
              ({ companion_age_range?, art_style?, ... })
   --seed     integer seed for deterministic rolls (mulberry32)
@@ -107,7 +110,11 @@ function stubSheet(gender, rolled) {
       'It exists only to demonstrate the shape of the output. In a real run the model ' +
       'weaves the rolled fields into a 150 to 300 word history explaining how the ' +
       "character's look and temperament came to be.",
+    player_dynamic: rolled.dynamic
+      ? `(mock) leans into being ${rolled.dynamic.replace(/-/g, ' ')} for the player`
+      : null,
     voice_style: 'speaks plainly, with short sentences and a dry edge',
+    punctuation: 'casual',
     // Always the rolled value, never invented — see castSoul's authoritative
     // overwrite in src/index.js for why this is never LLM-derived even in a
     // real (non-mock) run.
@@ -153,7 +160,7 @@ async function main() {
   const rng = args.seed != null && !Number.isNaN(args.seed) ? mulberry32(args.seed) : Math.random;
 
   if (args.mock) {
-    const rolled = rollFields({ gender: args.gender, userProfile, rng });
+    const rolled = rollFields({ gender: args.gender, userProfile, dynamic: args.dynamic, rng });
     const sheet = stubSheet(args.gender, rolled);
     console.log('=== rolled fields (Stage 1) ===');
     console.log(JSON.stringify(rolled, null, 2));
@@ -165,6 +172,7 @@ async function main() {
   const { sheet, rolled } = await castSoul({
     gender: args.gender,
     userProfile,
+    dynamic: args.dynamic,
     llm: anthropicLlm,
     rng,
   });

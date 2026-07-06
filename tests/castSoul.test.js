@@ -21,7 +21,9 @@ function validSheet(overrides = {}) {
       fears: ['being abandoned'],
     },
     backstory: 'A long enough backstory for the test.',
+    player_dynamic: 'The friend who talks you into trouble, then gets you back out of it.',
     voice_style: 'clipped, wry, warms up over time',
+    punctuation: 'casual',
     combat: {
       archetype: 'skirmisher',
       melee: 0.3,
@@ -125,6 +127,51 @@ test('castSoul retry: schema failure (valid JSON, wrong shape) then valid', asyn
 
 test('castSoul requires an llm function', async () => {
   await assert.rejects(() => castSoul({ gender: 'female' }), /requires an `llm` function/);
+});
+
+test('castSoul with a dynamic: prompt carries the relationship line, rolled echoes the key', async () => {
+  const seenUsers = [];
+  const llm = async ({ user }) => {
+    seenUsers.push(user);
+    return validSheet();
+  };
+  const { rolled } = await castSoul({ gender: 'female', dynamic: 'caretaker', llm, rng: mulberry32(6) });
+  assert.equal(rolled.dynamic, 'caretaker');
+  assert.match(seenUsers[0], /relationship_dynamic: someone who looks after you/);
+});
+
+test('castSoul without a dynamic: no relationship line in the prompt', async () => {
+  const seenUsers = [];
+  const llm = async ({ user }) => {
+    seenUsers.push(user);
+    return validSheet();
+  };
+  const { rolled } = await castSoul({ gender: 'female', llm, rng: mulberry32(7) });
+  assert.equal(rolled.dynamic, null);
+  assert.doesNotMatch(seenUsers[0], /relationship_dynamic/);
+});
+
+test('CharacterSheetSchema requires player_dynamic (nullable, not omittable)', () => {
+  const missing = JSON.parse(validSheet());
+  delete missing.player_dynamic;
+  assert.equal(CharacterSheetSchema.safeParse(missing).success, false);
+
+  const nulled = JSON.parse(validSheet({ player_dynamic: null }));
+  assert.ok(CharacterSheetSchema.safeParse(nulled).success);
+});
+
+test('CharacterSheetSchema punctuation: defaults casual when omitted, accepts deliberate, rejects junk', () => {
+  const omitted = JSON.parse(validSheet());
+  delete omitted.punctuation;
+  const parsed = CharacterSheetSchema.safeParse(omitted);
+  assert.ok(parsed.success);
+  assert.equal(parsed.data.punctuation, 'casual');
+
+  const deliberate = JSON.parse(validSheet({ punctuation: 'deliberate' }));
+  assert.ok(CharacterSheetSchema.safeParse(deliberate).success);
+
+  const junk = JSON.parse(validSheet({ punctuation: 'formal' }));
+  assert.equal(CharacterSheetSchema.safeParse(junk).success, false);
 });
 
 test('CharacterSheetSchema rejects a missing or invalid setting', () => {

@@ -30,6 +30,7 @@ import {
   LIFE_CONTEXTS,
   LIFE_CONTEXT_AGE_BANDS,
   LIFE_CONTEXT_WEIGHTS,
+  DYNAMICS,
 } from './tables.js';
 import { buildSystemPrompt, buildUserPrompt, buildRetrySuffix } from './prompt.js';
 
@@ -53,6 +54,7 @@ export {
   LIFE_CONTEXTS,
   LIFE_CONTEXT_AGE_BANDS,
   LIFE_CONTEXT_WEIGHTS,
+  DYNAMICS,
 };
 
 // ---------------------------------------------------------------------------
@@ -107,6 +109,22 @@ function pickTwoDistinct(arr, rng) {
   let guard = 0;
   while (second === first && guard < 50) {
     second = pick(arr, rng);
+    guard += 1;
+  }
+  return [first, second];
+}
+
+// Dynamic-biased personality roll: seed 1 comes from the dynamic's pool so
+// the requested relationship reliably reads through; seed 2 stays a free roll
+// from the FULL list (distinct from seed 1) so two casts with the same
+// dynamic still blend differently.
+function rollPersonalitySeeds(dynamic, rng) {
+  if (!dynamic) return pickTwoDistinct(PERSONALITY_SEEDS, rng);
+  const first = pick(DYNAMICS[dynamic].seed_pool, rng);
+  let second = pick(PERSONALITY_SEEDS, rng);
+  let guard = 0;
+  while (second === first && guard < 50) {
+    second = pick(PERSONALITY_SEEDS, rng);
     guard += 1;
   }
   return [first, second];
@@ -200,9 +218,14 @@ function rollLifeContext(age, rng) {
 
 const GENDERS = ['male', 'female', 'other'];
 
-export function rollFields({ gender, userProfile = null, rng = Math.random } = {}) {
+export function rollFields({ gender, userProfile = null, dynamic = null, rng = Math.random } = {}) {
   if (!GENDERS.includes(gender)) {
     throw new SoulcasterError(`gender must be one of ${GENDERS.join('|')}, got: ${JSON.stringify(gender)}`);
+  }
+  if (dynamic != null && !DYNAMICS[dynamic]) {
+    throw new SoulcasterError(
+      `dynamic must be one of ${Object.keys(DYNAMICS).join('|')} (or null), got: ${JSON.stringify(dynamic)}`,
+    );
   }
 
   const background = pickWeighted(BACKGROUNDS, rng);
@@ -212,7 +235,7 @@ export function rollFields({ gender, userProfile = null, rng = Math.random } = {
   const height = pick(HEIGHTS, rng);
   const build = pick(BUILDS, rng);
   const { age, apparent_only } = resolveAge(userProfile, rng);
-  const personality_seeds = pickTwoDistinct(PERSONALITY_SEEDS, rng);
+  const personality_seeds = rollPersonalitySeeds(dynamic, rng);
   const quirk_seed = pick(QUIRK_SEEDS, rng);
   const palette_accent = pick(PALETTE_ACCENTS, rng);
   const combat = rollCombat(background, rng);
@@ -221,6 +244,10 @@ export function rollFields({ gender, userProfile = null, rng = Math.random } = {
 
   const rolled = {
     gender,
+    // The requested relationship dynamic (a DYNAMICS key) or null. Biased
+    // seed 1 of personality_seeds above; echoed here so Stage 2 can build the
+    // relationship prompt line and callers can persist what was asked for.
+    dynamic,
     background,
     hair_color,
     hair_style,
@@ -279,7 +306,22 @@ export const CharacterSheetSchema = z.object({
     fears: z.array(z.string().min(1)).min(1).max(2),
   }),
   backstory: z.string().min(1),
+  // NOT rolled — one or two LLM-written sentences describing who this
+  // character is TO THE PLAYER they accompany (the relationship role they
+  // naturally fall into). When a dynamic was requested (rolled.dynamic), the
+  // prompt requires this field to express it; with no dynamic the model
+  // derives one from the personality. Freeform prose, so never re-stamped.
+  player_dynamic: z.string().min(1).nullable(),
   voice_style: z.string().min(1),
+  // NOT rolled — the LLM's judgment call on how this character punctuates
+  // short text-chat messages (see buildSystemPrompt). This is a texting
+  // register, not persona formality: 'casual' = normal modern texting with
+  // no sentence-ending periods (most characters, even serious ones);
+  // 'deliberate' = ends sentences with full stops on purpose (flat, measured,
+  // can read passive-aggressive — deadpan robots, stern or weary types).
+  // The sei client enforces it mechanically in chat post-processing.
+  // Defaulted so pre-existing sheets without the field still validate.
+  punctuation: z.enum(['casual', 'deliberate']).default('casual'),
   // Rolled deterministically in Stage 1 (rollCombat). The LLM is asked to
   // echo this verbatim, but castSoul overwrites it with the rolled value
   // after validation regardless — see the comment at that call site.
@@ -303,6 +345,11 @@ export const CharacterSheetSchema = z.object({
     distinguishing_features: z.array(z.string().min(1)).min(1).max(3),
   }),
   image_prompt: z.string().min(1),
+  // Tiny card caption ("a wry wood elf cartographer") added 260705 for the sei
+  // client's one-line description. Optional so pre-existing outputs and the CLI
+  // fixture path (which does not synthesize one) still validate; the client
+  // falls back to deriving a line from tone + species_detail when absent.
+  card_line: z.string().min(1).optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -345,12 +392,14 @@ function parseAndValidate(rawText) {
 // ---------------------------------------------------------------------------
 
 // llm signature: async ({ system, user, maxTokens }) => string
-export async function castSoul({ gender, userProfile = null, llm, rng = Math.random } = {}) {
+// `dynamic` (optional): a DYNAMICS key — the relationship the user ranked for
+// this cast ("a partner in crime", "someone who looks after you", ...).
+export async function castSoul({ gender, userProfile = null, dynamic = null, llm, rng = Math.random } = {}) {
   if (typeof llm !== 'function') {
     throw new SoulcasterError('castSoul requires an `llm` function: async ({ system, user, maxTokens }) => string');
   }
 
-  const rolled = rollFields({ gender, userProfile, rng });
+  const rolled = rollFields({ gender, userProfile, dynamic, rng });
   const system = buildSystemPrompt();
   const baseUser = buildUserPrompt({ gender, userProfile, rolled });
 
