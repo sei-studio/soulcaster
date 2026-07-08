@@ -36,13 +36,20 @@ test('every personality seed has a voice-tag affinity mapping', () => {
   }
 });
 
-test('pool depth: each gender x age band has at least 3 eligible voices', () => {
+// 260707 characters_animation trim shrank the pool (65 -> 25), so the old
+// ">= 3 exact-band voices" bar no longer holds (female/elder has 1). The
+// invariant that actually matters for rollVoice: every band has at least one
+// exact voice, and counting the adjacent band (weight 1.5) each character
+// still has a real choice.
+test('pool depth: every gender x age band is rollable with real choice', () => {
+  const ADJACENT = { young: ['young', 'adult'], adult: ['young', 'adult', 'elder'], elder: ['adult', 'elder'] };
   for (const gender of ['female', 'male']) {
     for (const age of ['young', 'adult', 'elder']) {
-      const n = VOICES.filter(
-        (v) => (v.gender === gender || v.gender === 'neutral') && v.age === age && !v.tags.includes('robotic'),
-      ).length;
-      assert.ok(n >= 3, `${gender}/${age} pool too small: ${n}`);
+      const eligible = (v) => (v.gender === gender || v.gender === 'neutral') && !v.tags.includes('robotic');
+      const exact = VOICES.filter((v) => eligible(v) && v.age === age).length;
+      const reachable = VOICES.filter((v) => eligible(v) && ADJACENT[age].includes(v.age)).length;
+      assert.ok(exact >= 1, `${gender}/${age} has no exact-band voice`);
+      assert.ok(reachable >= 3, `${gender}/${age} pool too small even with adjacent band: ${reachable}`);
     }
   }
 });
