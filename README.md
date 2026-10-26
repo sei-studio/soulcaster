@@ -71,6 +71,8 @@ Pass `takenVoiceIds` to keep a user's roster off the same voice. Combat is in-ga
 
 The model writes `name`, `setting`, `species_detail`, `occupation`, `personality`, `backstory`, `player_dynamic`, `appearance`, `image_prompt`, `voice_style`, `punctuation`, and `card_line`. It must echo the rolled fields verbatim.
 
+The name comes from a list. `castSoul` draws 8 random candidates from `src/namePool.js` (about 2,750 given names written for Sei, grouped by heritage and female/male/unisex) and the model picks the best fit. Left to itself the model reused a few favourite names (Akane, Priya, Chen Wei) across hundreds of casts. The draw uses `crypto.getRandomValues`, not the roll's `rng`, so a seeded roll still gets fresh names. Pass `excludeNames` (never offered, e.g. public characters) and `avoidNames` (skipped unless the pool runs dry, e.g. the user's library). The cloud path does the same draw in sei-proxy; keep the two pools in sync.
+
 Output is strict JSON, validated against `CharacterSheetSchema` (zod). A parse or schema failure retries once with the error appended, then throws `SoulcasterError`.
 
 ## Drift proofing
@@ -109,6 +111,8 @@ src/index.js    castSoul, rollFields, schema, mulberry32
 src/tables.js   every option table
 src/voices.js   curated voice pool
 src/prompt.js   prompt builders
+src/namePool.js given-name pool (copy of sei-proxy's)
+src/drawNames.js random name-candidate draw
 src/cli.js      CLI
 scripts/        distribution studies, voice sync
 tests/          node:test suite, no API key needed
