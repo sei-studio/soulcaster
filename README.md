@@ -62,7 +62,7 @@ Ask an LLM for a whole character and it repeats itself. The same hair colors, th
 | heritage | 12 naming cultures, weighted. Drives the name only, never an ethnicity claim for non-humans |
 | life_context | 10 job categories, weighted by an age x category matrix |
 | combat | 1 of 8 archetypes sets a band per stat, then a species bump. 4 stats in [0,1], quantized to 0.05 |
-| voice | 25 curated ElevenLabs voices. Gender is a hard filter, age bands never cross, personality tags weight the pick |
+| voice | 47 curated ElevenLabs voices (6 are picker-only, `roll: false`, never rolled). Gender is a hard filter, age bands never cross, personality tags weight the pick, robots get a robotic voice 70% of the time when one is free |
 | dynamic | optional. Biases the first personality seed so the requested relationship reads through |
 
 Pass `takenVoiceIds` to keep a user's roster off the same voice. Combat is in-game playstyle only. The prompt keeps it out of the backstory.

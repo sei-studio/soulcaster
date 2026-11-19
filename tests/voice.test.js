@@ -36,22 +36,100 @@ test('every personality seed has a voice-tag affinity mapping', () => {
   }
 });
 
-// 260707 characters_animation trim shrank the pool (65 -> 25), so the old
-// ">= 3 exact-band voices" bar no longer holds (female/elder has 1). The
-// invariant that actually matters for rollVoice: every band has at least one
-// exact voice, and counting the adjacent band (weight 1.5) each character
-// still has a real choice.
-test('pool depth: every gender x age band is rollable with real choice', () => {
-  const ADJACENT = { young: ['young', 'adult'], adult: ['young', 'adult', 'elder'], elder: ['adult', 'elder'] };
+// Rollable = what rollVoice can actually hand out to a human character.
+const rollable = (v) => v.roll !== false && !v.tags.includes('robotic');
+
+test('pool depth: each gender x age band has enough ROLLABLE voices', () => {
+  // Elder bands are rolled rarely (only elder characters) and also borrow the
+  // adjacent adult band at x1.5, so two exact-band voices are enough there.
+  const min = { young: 4, adult: 4, elder: 2 };
   for (const gender of ['female', 'male']) {
     for (const age of ['young', 'adult', 'elder']) {
-      const eligible = (v) => (v.gender === gender || v.gender === 'neutral') && !v.tags.includes('robotic');
-      const exact = VOICES.filter((v) => eligible(v) && v.age === age).length;
-      const reachable = VOICES.filter((v) => eligible(v) && ADJACENT[age].includes(v.age)).length;
-      assert.ok(exact >= 1, `${gender}/${age} has no exact-band voice`);
-      assert.ok(reachable >= 3, `${gender}/${age} pool too small even with adjacent band: ${reachable}`);
+      const n = VOICES.filter(
+        (v) => (v.gender === gender || v.gender === 'neutral') && v.age === age && rollable(v),
+      ).length;
+      assert.ok(n >= min[age], `${gender}/${age} pool too small: ${n}`);
     }
   }
+});
+
+test('every tag a rollable voice carries is reachable from some seed', () => {
+  const reachable = new Set(Object.values(SEED_VOICE_TAGS).flat());
+  for (const v of VOICES.filter(rollable)) {
+    for (const t of v.tags) assert.ok(reachable.has(t), `${v.label}: tag ${t} is in no SEED_VOICE_TAGS entry`);
+  }
+});
+
+test('every seed has at least one matching rollable voice per gender', () => {
+  for (const [seed, tags] of Object.entries(SEED_VOICE_TAGS)) {
+    for (const gender of ['female', 'male']) {
+      const n = VOICES.filter(
+        (v) => rollable(v) && (v.gender === gender || v.gender === 'neutral') && v.tags.some((t) => tags.includes(t)),
+      ).length;
+      assert.ok(n >= 1, `${seed} has no rollable ${gender} voice`);
+    }
+  }
+});
+
+// 261119 voice library refresh: picker-only voices are listed in the picker
+// but never rolled. Lyan is Sui's voice, so new characters must not get it.
+test('picker-only (roll: false) voices are exactly the agreed six', () => {
+  const pickerOnly = VOICES.filter((v) => v.roll === false).map((v) => v.label).sort();
+  assert.deepEqual(pickerOnly, ['Kel', 'Lyan', 'Meaghan', 'Quang Anh', 'Riley', 'Sammy']);
+  for (const v of VOICES) assert.ok(v.roll === undefined || v.roll === false, `${v.label}: roll must be absent or false`);
+});
+
+test('picker-only voices never roll, for any gender, age or background', () => {
+  const pickerOnly = new Set(VOICES.filter((v) => v.roll === false).map((v) => v.id));
+  const rng = mulberry32(23);
+  const seeds = Object.keys(SEED_VOICE_TAGS);
+  for (let i = 0; i < 3000; i += 1) {
+    const gender = ['female', 'male', 'other'][i % 3];
+    const age = [19, 24, 35, 45, 70][i % 5];
+    const background = i % 7 === 0 ? 'robot' : 'human';
+    const personality_seeds = [seeds[i % seeds.length], seeds[(i * 7) % seeds.length]];
+    const v = rollVoice({ gender, age, background, personality_seeds }, { rng });
+    assert.ok(!pickerOnly.has(v.id), `rolled picker-only voice ${v.label}`);
+  }
+});
+
+test('picker-only voices stay out even when every rollable voice is taken', () => {
+  const pickerOnly = new Set(VOICES.filter((v) => v.roll === false).map((v) => v.id));
+  const rng = mulberry32(29);
+  const allRollable = VOICES.filter((v) => v.roll !== false).map((v) => v.id);
+  for (let i = 0; i < 200; i += 1) {
+    const v = rollVoice(
+      { gender: 'female', age: 24, background: 'human', personality_seeds: ['sunny', 'gentle'] },
+      { takenVoiceIds: allRollable, rng },
+    );
+    assert.ok(!pickerOnly.has(v.id), `rolled picker-only voice ${v.label}`);
+  }
+});
+
+test('the 261119-retired voices are gone from the table', () => {
+  const retired = [
+    'M5E055lOUxMi0kJpGyE9', // Gravel
+    '507tTFX0IPtqFzGd1CAL', // Rusty
+    'bAq8AI9QURijOtmeFFqT', // Sigma
+    'Z9VxF84ucVtzvKlmYFhh', // Ramona
+    'SAz9YHcvj6GT2YYXdXww', // River
+    'YKlogvnVogI4aFHoGIEw', // Aaron
+    '7squ7rvxEIZ2rYy7KYPP', // Malakai
+    'YHcCpa6SBWnKDaCPZJQR', // Mora
+  ];
+  for (const id of retired) assert.ok(!VOICES.some((v) => v.id === id), `${id} still in VOICES`);
+});
+
+test('robots still get Vector (the one robotic voice) when it is free', () => {
+  const robotic = VOICES.filter((v) => v.tags.includes('robotic') && v.roll !== false);
+  assert.deepEqual(robotic.map((v) => v.label), ['Vector']);
+  const rng = mulberry32(31);
+  let vector = 0;
+  for (let i = 0; i < 400; i += 1) {
+    const v = rollVoice({ gender: ['female', 'male', 'other'][i % 3], age: 30, background: 'robot', personality_seeds: ['stoic', 'meticulous'] }, { rng });
+    if (v.label === 'Vector') vector += 1;
+  }
+  assert.ok(vector > 200, `robots rarely rolled Vector (${vector}/400)`);
 });
 
 test('age band edges', () => {
