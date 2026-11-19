@@ -60,7 +60,7 @@ export const VOICE_TAGS = [
 ];
 
 export const VOICES = [
-  // ------------------------------------------------------------- female
+  // ------------------------------------------------------------------ female
   // young
   { id: 'FNhoq0qHG3T8YOWzBtd6', owner: '941f1f501fbba05614a17d087fed1008a6ce594f34808b6b8d981fa348a04dbd', label: 'Allison', gender: 'female', age: 'young', tags: ['sassy', 'energetic', 'rough'], vibe: 'a cowgirl drawl, sassy Southern twang' },
   { id: 'WtA85syCrJwasGeHGH2p', owner: '676836da794e5521fa0d8bea0f0eb62593e5a418cfc28e5cfbf56763ec40921c', label: 'Ember', gender: 'female', age: 'young', tags: ['energetic', 'confident', 'bright'], vibe: 'bold adventurous protagonist, fearless with a playful edge, American' },
@@ -86,7 +86,7 @@ export const VOICES = [
   { id: '7NsaqHdLuKNFvEfjpUno', owner: 'a42905fd2095e55c89320aa75143b885e3ccd020577c280c8c0d0d022f3cfe44', label: 'Morganna', gender: 'female', age: 'elder', tags: ['wise', 'commanding', 'intense'], vibe: 'old fortune-telling seer, clear and intimidating' },
   { id: 'vFLqXa8bgbofGarf6fZh', owner: 'ae23ca715ed6b339e4ad22f2d45dd40b36a6449e031b4f8970bfe29524bd1bbc', label: 'Oxley', gender: 'female', age: 'elder', tags: ['warm', 'gentle', 'soft'], vibe: 'sweet caring grandmother, modest pacing, American' },
 
-  // --------------------------------------------------------------- male
+  // -------------------------------------------------------------------- male
   // young
   { id: 'SOYHLrjzK2X1ezoPC6cr', owner: null, label: 'Harry', gender: 'male', age: 'young', tags: ['rough', 'intense', 'energetic'], vibe: 'fierce and rough, a young warrior’s bark, American accent' },
   { id: 'wSqOdjeNqDrHcoK0zorF', owner: '59b69ab0c20dacf272109a7a9f65228f6767244c99a93f287eec05754f550f7a', label: 'Lukas', gender: 'male', age: 'young', tags: ['excited', 'upbeat', 'bright', 'energetic'], vibe: 'excited and youthful, bursting with enthusiasm, American accent' },
@@ -117,7 +117,7 @@ export const VOICES = [
   { id: 'ouL9IsyrSnUkCmfnD02u', owner: '9d48e632126e47fa24331617611c4fab3fbb61beadec42067817c28ade5f332f', label: 'Grimble', gender: 'male', age: 'elder', tags: ['raspy', 'dry', 'wise'], vibe: 'high-pitched snarky gnome, grumpy humor with warm wisdom, British' },
   { id: 'MKlLqCItoCkvdhrxgtLv', owner: '675db5c1a341e2f820aefb00825680aa042d958a4a3aef3200735c799210dcb4', label: 'Walt', gender: 'male', age: 'elder', tags: ['dry', 'raspy', 'casual'], vibe: 'cranky old-timer grandpa, sometimes sweet, always honest, American' },
 
-  // ------------------------------------------------------------ neutral
+  // ----------------------------------------------------------------- neutral
   { id: 'qXpMhyvQqiRxWQs4qSSB', owner: '4e120f88d43f125a4c1f56885db63990e17568c80c5cca2f9f3a6459230fbeb1', label: 'Horatius', gender: 'neutral', age: 'young', tags: ['energetic', 'confident', 'sly'], vibe: 'over-the-top precocious adventurer or evil genius, American' },
   { id: 'NoiYxL9g25M4orC8Q0ls', owner: '84170eba2e50e0df575fca41c02e69d51200016cc292e0f433bb2b37cea28126', label: 'Vector', gender: 'neutral', age: 'adult', tags: ['robotic', 'professional'], vibe: 'clipped technical synth, machine-precise, American accent' },
   // picker only (roll: false)
